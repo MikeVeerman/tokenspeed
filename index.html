@@ -409,6 +409,25 @@
     margin-top: 18px;
   }
 
+  /* -- jitter -- */
+  .jitter-row {
+    gap: 12px;
+  }
+  .jitter-label {
+    color: var(--dim);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    min-width: 44px;
+  }
+  .jitter-num {
+    color: var(--dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 36px;
+  }
+
   @media (max-width: 640px) {
     body { padding: 16px 12px; }
     .rate-bar { grid-template-columns: 1fr auto; row-gap: 12px; }
@@ -463,6 +482,12 @@
       <button class="pill preset" data-rate="800"><kbd>9</kbd><span class="num">800</span></button>
     </div>
 
+    <div class="row jitter-row" id="jitterRow">
+      <span class="jitter-label">Jitter</span>
+      <input type="range" id="jitterSlider" min="0" max="100" step="1" value="0" aria-label="Speed variation percentage">
+      <span class="jitter-num" id="jitterNum">0%</span>
+    </div>
+
     <div class="output" id="output" tabindex="0" aria-live="polite"><span id="cursor-end">▍</span></div>
 
     <div class="footer">
@@ -470,7 +495,7 @@
         <kbd>space</kbd> pause &nbsp;·&nbsp;
         <kbd>+</kbd> / <kbd>−</kbd> adjust &nbsp;·&nbsp;
         <kbd>1</kbd>–<kbd>9</kbd> presets &nbsp;·&nbsp;
-        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> mode
+        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> mode &nbsp;·&nbsp; <kbd>j</kbd> jitter
       </div>
       <span class="pause-badge">⏸ PAUSED</span>
     </div>
@@ -536,6 +561,7 @@ const MAX_NODES   = 5000;
 const TRIM_TO     = 3500;
 const MAX_PER_FRAME = 300;
 const PRESET_RATES = [5, 10, 20, 30, 60, 100, 200, 400, 800];
+const JITTER_PRESETS = [0, 0.25, 0.5, 0.75];
 
 const TEXT = (`Intelligence
 
@@ -832,10 +858,12 @@ const GENERATORS = { code: codeTokens, text: proseTokens, think: thinkTokens };
 
 // ---- state + UI ----
 
-const output     = document.getElementById("output");
-const cursorEnd  = document.getElementById("cursor-end");
-const rateNum    = document.getElementById("rateNum");
-const rateSlider = document.getElementById("rateSlider");
+const output       = document.getElementById("output");
+const cursorEnd    = document.getElementById("cursor-end");
+const rateNum      = document.getElementById("rateNum");
+const rateSlider   = document.getElementById("rateSlider");
+const jitterNum    = document.getElementById("jitterNum");
+const jitterSlider = document.getElementById("jitterSlider");
 
 let rate = 30;
 let paused = false;
@@ -844,6 +872,9 @@ let gen = null;
 let raf = null;
 let lastTime = 0;
 let accumulator = 0;
+
+// -- jitter --
+let jitter = 0;
 
 const LOG_RANGE = Math.log(MAX_RATE / MIN_RATE);
 const rateToSlider = r => 100 * Math.log(r / MIN_RATE) / LOG_RANGE;
@@ -897,6 +928,7 @@ function syncURL() {
   const params = new URLSearchParams();
   params.set("rate", formatRate(rate));
   params.set("mode", mode);
+  if (jitter > 0) params.set("jitter", Math.round(jitter * 100));
   history.replaceState(null, "", "?" + params.toString());
 }
 
@@ -929,7 +961,8 @@ function frame(now) {
   const dt = (now - lastTime) / 1000;
   lastTime = now;
   // Cap dt to absorb tab-backgrounded gaps without bursting
-  accumulator += Math.min(dt, 0.1) * rate;
+  const jitterFactor = jitter > 0 ? Math.max(0.1, 1 + jitter * (Math.random() * 2 - 1)) : 1;
+  accumulator += Math.min(dt, 0.1) * rate * jitterFactor;
   let n = Math.floor(accumulator);
   if (n > 0) {
     accumulator -= n;
@@ -951,6 +984,13 @@ function start() {
   raf = requestAnimationFrame(frame);
 }
 
+function setJitter(v) {
+  jitter = Math.max(0, Math.min(1, v));
+  jitterNum.textContent = Math.round(jitter * 100) + "%";
+  jitterSlider.value = Math.round(jitter * 100);
+  syncURL();
+}
+
 // ---- wiring ----
 
 document.querySelectorAll("[data-mode]").forEach(b => {
@@ -965,6 +1005,8 @@ document.getElementById("rateUp").addEventListener("click",   e => { setRate(rat
 document.getElementById("rateDown").addEventListener("click", e => { setRate(rate / RATE_STEP); e.currentTarget.blur(); });
 
 rateSlider.addEventListener("input", e => setRate(sliderToRate(parseFloat(e.target.value)), true));
+
+jitterSlider.addEventListener("input", e => setJitter(parseInt(e.target.value, 10) / 100));
 
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -986,6 +1028,10 @@ document.addEventListener("keydown", e => {
     setMode("text");
   } else if (k === "h" || k === "H") {
     setMode("think");
+  } else if (k === "j" || k === "J") {
+    const current = JITTER_PRESETS.findIndex(p => Math.abs(p - jitter) < 0.01);
+    const next = (current + 1) % JITTER_PRESETS.length;
+    setJitter(JITTER_PRESETS[next]);
   }
 });
 
@@ -1024,8 +1070,12 @@ const urlRate  = parseFloat(urlParams.get("rate"));
 const initialMode = (urlMode && GENERATORS[urlMode]) ? urlMode : "code";
 const initialRate = !isNaN(urlRate) ? urlRate : 30;
 
+const urlJitter = parseInt(urlParams.get("jitter"), 10);
+if (!isNaN(urlJitter) && urlJitter >= 0 && urlJitter <= 100) jitter = urlJitter / 100;
+
 setRate(initialRate);
 setMode(initialMode);
+if (jitter > 0) setJitter(jitter);
 </script>
 </body>
 </html>
