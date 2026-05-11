@@ -449,6 +449,55 @@
     min-width: 90px;
   }
 
+  /* -- custom text -- */
+  .custom-panel {
+    width: 100%;
+  }
+  .custom-panel > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .custom-panel > summary::-webkit-details-marker { display: none; }
+  .custom-panel[open] > summary {
+    margin-bottom: 10px;
+  }
+  .custom-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #customText {
+    width: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font: inherit;
+    font-size: 13px;
+    resize: vertical;
+    min-height: 80px;
+  }
+  #customText:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  #customText::placeholder {
+    color: var(--dim);
+  }
+  .custom-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .custom-status {
+    color: var(--dim);
+    font-size: 11px;
+    font-style: italic;
+  }
+  .custom-status.active {
+    color: var(--accent);
+  }
+
   @media (max-width: 640px) {
     body { padding: 16px 12px; }
     .rate-bar { grid-template-columns: 1fr auto; row-gap: 12px; }
@@ -510,6 +559,23 @@
       <span class="think-num" id="thinkNum">5 sentences</span>
     </div>
 
+    <details class="custom-panel" id="customPanel">
+      <summary class="pill"><kbd>u</kbd>custom text…</summary>
+      <div class="custom-body">
+        <textarea id="customText" rows="5" placeholder="Paste your text or code here…"></textarea>
+        <div class="row">
+          <button class="pill custom-btn" id="customApplyText">Use as text</button>
+          <button class="pill custom-btn" id="customApplyCode">Use as code</button>
+          <button class="pill custom-btn" id="customClear">Clear</button>
+          <label class="pill custom-btn">
+            Upload file
+            <input type="file" id="customFile" accept=".txt,.py,.js,.rs,.md,.json,.ts,.go,.c,.cpp,.h,.java,.rb,.sh" hidden>
+          </label>
+        </div>
+        <span class="custom-status" id="customStatus"></span>
+      </div>
+    </details>
+
     <div class="output" id="output" tabindex="0" aria-live="polite"><span id="cursor-end">▍</span></div>
 
     <div class="footer">
@@ -517,7 +583,7 @@
         <kbd>space</kbd> pause &nbsp;·&nbsp;
         <kbd>+</kbd> / <kbd>−</kbd> adjust &nbsp;·&nbsp;
         <kbd>1</kbd>–<kbd>9</kbd> presets &nbsp;·&nbsp;
-        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> / <kbd>a</kbd> mode &nbsp;·&nbsp; <kbd>&lt;</kbd> / <kbd>&gt;</kbd> think length
+        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> / <kbd>a</kbd> mode &nbsp;·&nbsp; <kbd>&lt;</kbd> / <kbd>&gt;</kbd> think length &nbsp;·&nbsp; <kbd>u</kbd> custom
       </div>
       <span class="pause-badge">⏸ PAUSED</span>
     </div>
@@ -908,6 +974,23 @@ function* agentTokens() {
   }
 }
 
+function* customTextTokens() {
+  const words = customContent.split(/\s+/).filter(w => w.length > 0);
+  if (words.length === 0) { yield* proseTokens(); return; }
+  let i = 0;
+  while (true) {
+    yield* emitSplitWord(words[i % words.length]);
+    i++;
+  }
+}
+
+function* customCodeTokens() {
+  while (true) {
+    yield* emitSnippet(customContent);
+    yield "\n\n";
+  }
+}
+
 const GENERATORS = { code: codeTokens, text: proseTokens, think: thinkTokens, agent: agentTokens };
 
 // ---- state + UI ----
@@ -931,6 +1014,9 @@ let pauseUntil = 0;
 
 // -- think length --
 let thinkLength = 5;
+
+// -- custom content --
+let customContent = null;
 
 const LOG_RANGE = Math.log(MAX_RATE / MIN_RATE);
 const rateToSlider = r => 100 * Math.log(r / MIN_RATE) / LOG_RANGE;
@@ -968,7 +1054,11 @@ function clearOutput() {
 function setMode(m) {
   if (m === mode) return;
   mode = m;
-  gen = GENERATORS[m]();
+  if (customContent && (m === "text" || m === "code")) {
+    gen = (m === "code" ? customCodeTokens : customTextTokens)();
+  } else {
+    gen = GENERATORS[m]();
+  }
   document.querySelectorAll("[data-mode]").forEach(b => {
     b.classList.toggle("active", b.dataset.mode === m);
   });
@@ -1076,6 +1166,7 @@ thinkSlider.addEventListener("input", e => setThinkLength(parseInt(e.target.valu
 
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.matches("textarea, input:not([type='range'])")) return;
   const k = e.key;
   if (k === " ") {
     e.preventDefault();
@@ -1102,6 +1193,9 @@ document.addEventListener("keydown", e => {
   } else if (k === ">" || k === ".") {
     e.preventDefault();
     setThinkLength(thinkLength + 1);
+  } else if (k === "u" || k === "U") {
+    const panel = document.getElementById("customPanel");
+    panel.open = !panel.open;
   }
 });
 
@@ -1130,6 +1224,41 @@ document.getElementById("shareBtn").addEventListener("click", async (e) => {
     btn.classList.remove("copied");
   }, 1500);
   btn.blur();
+});
+
+// -- custom content wiring --
+function applyCustom(asMode) {
+  const val = document.getElementById("customText").value.trim();
+  if (!val) return;
+  customContent = val;
+  document.getElementById("customStatus").textContent = "Custom " + asMode + " active";
+  document.getElementById("customStatus").className = "custom-status active";
+  mode = null;
+  setMode(asMode);
+}
+
+document.getElementById("customApplyText").addEventListener("click", () => applyCustom("text"));
+document.getElementById("customApplyCode").addEventListener("click", () => applyCustom("code"));
+
+document.getElementById("customClear").addEventListener("click", () => {
+  customContent = null;
+  document.getElementById("customText").value = "";
+  const status = document.getElementById("customStatus");
+  status.textContent = "";
+  status.className = "custom-status";
+  const currentMode = mode;
+  mode = null;
+  setMode(currentMode);
+});
+
+document.getElementById("customFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById("customText").value = reader.result;
+  };
+  reader.readAsText(file);
 });
 
 // ---- init ----
