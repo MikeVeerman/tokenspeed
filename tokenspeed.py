@@ -13,23 +13,25 @@ import tty
 # Prose mode (lorem ipsum)
 # ---------------------------------------------------------------------------
 
-LOREM = (
-    "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor "
-    "incididunt ut labore et dolore magna aliqua Ut enim ad minim veniam quis "
-    "nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat "
-    "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore "
-    "eu fugiat nulla pariatur Excepteur sint occaecat cupidatat non proident sunt "
-    "in culpa qui officia deserunt mollit anim id est laborum Sed ut perspiciatis "
-    "unde omnis iste natus error sit voluptatem accusantium doloremque laudantium "
-    "totam rem aperiam eaque ipsa quae ab illo inventore veritatis et quasi "
-    "architecto beatae vitae dicta sunt explicabo Nemo enim ipsam voluptatem quia "
-    "voluptas sit aspernatur aut odit aut fugit sed quia consequuntur magni "
-    "dolores eos qui ratione voluptatem sequi nesciunt neque porro quisquam est "
-    "qui dolorem ipsum quia dolor sit amet consectetur adipisci velit"
-).split()
+TEXT = '''
+Intelligence
 
-PUNCT_EVERY = 12
+Intelligence refers to certain mental powers. There is no general agreement on which mental powers are intelligent or part of intelligence. The idea comes from a Latin word: "intelligo" meaning to "choose between different options". A part of intelligence allows people to solve problems. These problems may be easy to solve. They may also be difficult to solve, and involve abstract thought. For some, intelligence is a property, or characteristic of the mind. For others, it is simply the working of the brain, especially the cerebral cortex.
 
+If an answer is found to a problem, it can be remembered. That way, the problem is solved more quickly when it comes up again. This is what is called learning.
+
+There is disagreement about which has more influence on intelligence, genetics or environment. Also, intelligent behaviour is possibly learned when an organism (a living thing) reacts enough to a stimulus.
+
+Scientists believe that intelligence can be measured or tested. A type of intelligence test would be solving many problems in a very short time. Most of the problems have to do with seeing things, or telling what a rotated shape would look like. Some are also related to mathematics: for example to tell what number would come next in a row. Other tests have to do with words or the understanding of language. After giving such a test to a person, a number would be calculated to give an approximation of the Intelligence Quotient (IQ).
+
+Computer engineers try to build machines that act as if they were intelligent. This is related to computer science and is called Artificial intelligence (man-made "intelligence"). Artificial intelligence uses logic, and often combines it with machine learning. This means that similar to living organisms, the machine has to be trained to solve a problem. After training, it will solve the problem faster.
+
+Intelligence is not limited to humans. Many animals also show signs of intelligence: animals also need to solve problems, and remembering how a problem is solved is useful to them. Many animals use tools to solve problems. These animals include the Great Apes, dogs, dolphins, elephants, rats and mice, and some birds. All these animals are vertebrates, but tool use isn't limited to these: Even cephalopods and arthropods show signs of intelligence. To be able to compare the behaviours of different species, scientists need to adapt the notion of intelligence. 
+
+It has been argued that plants should also be classified as intelligent: they are able to sense and model external and internal environments and adjust their morphology, physiology and phenotype accordingly to ensure self-preservation and reproduction. A counter argument is that intelligence is commonly understood to involve the creation and use of persistent memories. 
+
+Opposed to this are computations that only occur once, and that do not involve learning. If this is accepted as part of the definition, then it includes the artificial intelligence of robots capable of "machine learning", but excludes those purely autonomic sense-reaction responses that can be observed in many plants. Plants are not limited to automated sensory-motor responses, however, they are capable of discriminating positive and negative experiences and of 'learning' (registering memories) from their past experiences. They are also capable of communication, accurately computing their circumstances, using sophisticated cost–benefit analysis and taking tightly controlled actions to mitigate and control the diverse environmental stressors.
+'''.split(' ')
 
 def _bpe_split_plain_word(word):
     """BPE-ish: short words stay whole; longer words split more often."""
@@ -49,11 +51,9 @@ def _bpe_split_plain_word(word):
 def prose_tokens():
     i = 0
     while True:
-        word = LOREM[i % len(LOREM)]
+        word = TEXT[i % len(TEXT)]
         i += 1
         yield from _emit_split_word(word)
-        if i % PUNCT_EVERY == 0:
-            yield random.choice([",", ".", ".", ";"])
 
 
 # ---------------------------------------------------------------------------

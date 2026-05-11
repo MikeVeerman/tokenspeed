@@ -9,7 +9,7 @@ Every local-LLM benchmark reports throughput: "47 tok/s on an M3," "180 tok/s on
 Three modes:
 
 - **`code`** — syntax-highlighted pseudo-code (Python/Rust/JS), the most common thing you watch stream out of an LLM
-- **`text`** — lorem ipsum prose, for the chat/answer case
+- **`text`** — Wikipedia prose, for the chat/answer case
 - **`think`** — dim-italic reasoning sentences alternating with code, mimicking a reasoning model thinking out loud
 
 If you don't pick a mode on the command line, it'll ask.
