@@ -409,6 +409,55 @@
     margin-top: 18px;
   }
 
+  /* -- prompt viz -- */
+  .prompt-viz-row {
+    gap: 10px;
+    align-items: center;
+  }
+  .prompt-viz-info {
+    color: var(--dim);
+    font-size: 11px;
+  }
+  .prompt-overlay {
+    padding-bottom: 12px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .prompt-overlay .prompt-label {
+    color: var(--dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .prompt-overlay .prompt-text {
+    color: var(--dim);
+    font-size: 13px;
+    opacity: 0.7;
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  .prompt-overlay .prompt-bar-track {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .prompt-overlay .prompt-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.05s linear;
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .prompt-overlay .prompt-stats {
+    color: var(--dim);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
   @media (max-width: 640px) {
     body { padding: 16px 12px; }
     .rate-bar { grid-template-columns: 1fr auto; row-gap: 12px; }
@@ -463,6 +512,11 @@
       <button class="pill preset" data-rate="800"><kbd>9</kbd><span class="num">800</span></button>
     </div>
 
+    <div class="row prompt-viz-row">
+      <button class="pill" id="promptVizToggle"><kbd>p</kbd>prompt viz</button>
+      <span class="prompt-viz-info" id="promptVizInfo">off</span>
+    </div>
+
     <div class="output" id="output" tabindex="0" aria-live="polite"><span id="cursor-end">▍</span></div>
 
     <div class="footer">
@@ -470,7 +524,7 @@
         <kbd>space</kbd> pause &nbsp;·&nbsp;
         <kbd>+</kbd> / <kbd>−</kbd> adjust &nbsp;·&nbsp;
         <kbd>1</kbd>–<kbd>9</kbd> presets &nbsp;·&nbsp;
-        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> mode
+        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> mode &nbsp;·&nbsp; <kbd>p</kbd> prompt viz
       </div>
       <span class="pause-badge">⏸ PAUSED</span>
     </div>
@@ -666,6 +720,17 @@ const THOUGHTS = [
   "Reading the tests, the contract seems to be that empty input returns an empty list, not None.",
 ];
 
+const SAMPLE_PROMPTS = [
+  "Write a Python function that takes a list of integers and returns the longest increasing subsequence. Include type hints and handle edge cases like empty lists.",
+  "Refactor this Express.js middleware to use async/await instead of callbacks. Make sure error handling is preserved and add proper TypeScript types.",
+  "Explain how the Linux kernel's CFS scheduler works. Include details about virtual runtime, red-black trees, and how it handles different priority levels.",
+  "Debug this Rust code that's causing a lifetime error. The struct holds a reference to a string slice but the compiler says the borrow doesn't live long enough.",
+  "Create a React component that implements infinite scroll with virtualization. It should efficiently render a list of 10,000 items without performance issues.",
+  "Review this SQL migration that adds a NOT NULL column to a table with 50M rows. Is the backfill approach safe under concurrent writes?",
+  "Implement a rate limiter using the token bucket algorithm in Go. It should support configurable burst sizes and be safe for concurrent use.",
+  "Write unit tests for this authentication module. Cover the happy path, invalid credentials, expired tokens, and rate limiting scenarios.",
+];
+
 // ---- helpers ----
 
 function escapeHtml(s) {
@@ -845,6 +910,16 @@ let raf = null;
 let lastTime = 0;
 let accumulator = 0;
 
+// -- prompt viz --
+let promptVizEnabled = false;
+let promptVizActive = false;
+
+function togglePromptViz() {
+  promptVizEnabled = !promptVizEnabled;
+  document.getElementById("promptVizToggle").classList.toggle("active", promptVizEnabled);
+  document.getElementById("promptVizInfo").textContent = promptVizEnabled ? "on" : "off";
+}
+
 const LOG_RANGE = Math.log(MAX_RATE / MIN_RATE);
 const rateToSlider = r => 100 * Math.log(r / MIN_RATE) / LOG_RANGE;
 const sliderToRate = v => MIN_RATE * Math.exp((v / 100) * LOG_RANGE);
@@ -886,9 +961,11 @@ function setMode(m) {
     b.classList.toggle("active", b.dataset.mode === m);
   });
   clearOutput();
-  lastTime = performance.now();
-  accumulator = 0;
-  start();
+  showPromptProcessing(() => {
+    lastTime = performance.now();
+    accumulator = 0;
+    start();
+  });
   syncURL();
 }
 
@@ -951,6 +1028,56 @@ function start() {
   raf = requestAnimationFrame(frame);
 }
 
+function showPromptProcessing(onComplete) {
+  if (!promptVizEnabled || promptVizActive) { onComplete(); return; }
+  promptVizActive = true;
+
+  const prompt = SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)];
+  const words = prompt.split(" ");
+  const tokenCount = Math.round(words.length * 1.3); // ~1.3 tokens per word
+  const ppSpeed = Math.max(rate, 10);
+  const totalTime = (tokenCount / ppSpeed) * 1000;
+
+  const overlayHTML = `<div class="prompt-overlay" id="promptOverlay">
+    <div class="prompt-label">Processing input prompt</div>
+    <div class="prompt-text" id="promptWords"></div>
+    <div class="prompt-bar-track"><div class="prompt-bar-fill" id="promptBar" style="width:0%"></div></div>
+    <div class="prompt-stats" id="promptStatsText">0 / ${tokenCount} tokens \u00b7 ${Math.round(ppSpeed)} tok/s</div>
+  </div>`;
+
+  cursorEnd.insertAdjacentHTML("beforebegin", overlayHTML);
+  output.scrollTop = output.scrollHeight;
+
+  const wordsEl = document.getElementById("promptWords");
+  const barEl = document.getElementById("promptBar");
+  const statsEl = document.getElementById("promptStatsText");
+
+  let wordIndex = 0;
+  const wordInterval = totalTime / words.length;
+
+  function tick() {
+    // Bail out if overlay was removed (e.g. user switched modes)
+    if (!wordsEl.isConnected) { promptVizActive = false; return; }
+    if (wordIndex < words.length) {
+      wordsEl.textContent += (wordIndex > 0 ? " " : "") + words[wordIndex];
+      wordIndex++;
+      const progress = wordIndex / words.length;
+      barEl.style.width = (progress * 100) + "%";
+      const tokensProcessed = Math.round(progress * tokenCount);
+      statsEl.textContent = `${tokensProcessed} / ${tokenCount} tokens \u00b7 ${Math.round(ppSpeed)} tok/s`;
+      output.scrollTop = output.scrollHeight;
+      setTimeout(tick, wordInterval);
+    } else {
+      setTimeout(() => {
+        promptVizActive = false;
+        onComplete();
+      }, 300);
+    }
+  }
+
+  tick();
+}
+
 // ---- wiring ----
 
 document.querySelectorAll("[data-mode]").forEach(b => {
@@ -986,6 +1113,8 @@ document.addEventListener("keydown", e => {
     setMode("text");
   } else if (k === "h" || k === "H") {
     setMode("think");
+  } else if (k === "p" || k === "P") {
+    togglePromptViz();
   }
 });
 
@@ -1014,6 +1143,11 @@ document.getElementById("shareBtn").addEventListener("click", async (e) => {
     btn.classList.remove("copied");
   }, 1500);
   btn.blur();
+});
+
+document.getElementById("promptVizToggle").addEventListener("click", (e) => {
+  togglePromptViz();
+  e.currentTarget.blur();
 });
 
 // ---- init ----
