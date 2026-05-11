@@ -294,7 +294,7 @@
     border-radius: 12px;
     padding: 18px 20px;
     min-height: 360px;
-    height: 56vh;
+    height: var(--output-height, 56vh);
     overflow-y: auto;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
@@ -409,6 +409,30 @@
     margin-top: 18px;
   }
 
+  /* -- resize handle -- */
+  .resize-handle {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 16px;
+    cursor: ns-resize;
+    color: var(--dim);
+    font-size: 14px;
+    letter-spacing: 4px;
+    user-select: none;
+    transition: color 0.12s;
+    margin: -4px 0;
+  }
+  .resize-handle:hover,
+  .resize-handle:active {
+    color: var(--accent);
+  }
+  .output.resizing {
+    user-select: none;
+    pointer-events: none;
+    transition: none;
+  }
+
   @media (max-width: 640px) {
     body { padding: 16px 12px; }
     .rate-bar { grid-template-columns: 1fr auto; row-gap: 12px; }
@@ -416,6 +440,7 @@
     h1 { font-size: 18px; }
     .rate-num { font-size: 24px; }
     .subtitle { font-size: 16px; }
+    .resize-handle { height: 24px; }
   }
 </style>
 </head>
@@ -464,6 +489,7 @@
     </div>
 
     <div class="output" id="output" tabindex="0" aria-live="polite"><span id="cursor-end">▍</span></div>
+    <div class="resize-handle" id="resizeHandle" title="Drag to resize · double-click to reset">⋯</div>
 
     <div class="footer">
       <div>
@@ -950,6 +976,48 @@ function start() {
   lastTime = performance.now();
   raf = requestAnimationFrame(frame);
 }
+
+// -- resize handle --
+(function() {
+  const handle = document.getElementById("resizeHandle");
+  let resizing = false, startY = 0, startH = 0;
+
+  function onPointerDown(y) {
+    resizing = true;
+    startY = y;
+    startH = output.offsetHeight;
+    output.classList.add("resizing");
+    document.body.style.cursor = "ns-resize";
+  }
+
+  function onPointerMove(y) {
+    if (!resizing) return;
+    const newH = Math.max(150, Math.min(window.innerHeight * 0.9, startH + (y - startY)));
+    output.style.height = newH + "px";
+  }
+
+  function onPointerUp() {
+    if (!resizing) return;
+    resizing = false;
+    output.classList.remove("resizing");
+    document.body.style.cursor = "";
+  }
+
+  // Mouse events
+  handle.addEventListener("mousedown", e => { e.preventDefault(); onPointerDown(e.clientY); });
+  document.addEventListener("mousemove", e => { if (resizing) { e.preventDefault(); onPointerMove(e.clientY); } });
+  document.addEventListener("mouseup", onPointerUp);
+
+  // Touch events
+  handle.addEventListener("touchstart", e => { e.preventDefault(); onPointerDown(e.touches[0].clientY); }, { passive: false });
+  document.addEventListener("touchmove", e => { if (resizing) onPointerMove(e.touches[0].clientY); }, { passive: true });
+  document.addEventListener("touchend", onPointerUp);
+
+  // Double-click to reset
+  handle.addEventListener("dblclick", () => {
+    output.style.height = "";
+  });
+})();
 
 // ---- wiring ----
 
