@@ -409,6 +409,7 @@
     margin-top: 18px;
   }
 
+<<<<<<< HEAD
   /* -- agent mode -- */
   .agent-phase {
     color: var(--dim);
@@ -498,6 +499,22 @@
     color: var(--accent);
   }
 
+  /* -- token counter -- */
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .token-count {
+    color: var(--dim);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.15s;
+  }
+  .token-count.hidden {
+    display: none;
+  }
+
   @media (max-width: 640px) {
     body { padding: 16px 12px; }
     .rate-bar { grid-template-columns: 1fr auto; row-gap: 12px; }
@@ -583,9 +600,13 @@
         <kbd>space</kbd> pause &nbsp;·&nbsp;
         <kbd>+</kbd> / <kbd>−</kbd> adjust &nbsp;·&nbsp;
         <kbd>1</kbd>–<kbd>9</kbd> presets &nbsp;·&nbsp;
-        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> / <kbd>a</kbd> mode &nbsp;·&nbsp; <kbd>&lt;</kbd> / <kbd>&gt;</kbd> think length &nbsp;·&nbsp; <kbd>u</kbd> custom
+        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> / <kbd>a</kbd> mode &nbsp;·&nbsp; <kbd>&lt;</kbd> / <kbd>&gt;</kbd> think length &nbsp;·&nbsp; <kbd>u</kbd> custom &nbsp;·&nbsp;
+        <kbd>n</kbd> counter
       </div>
-      <span class="pause-badge">⏸ PAUSED</span>
+      <div class="footer-right">
+        <span class="token-count" id="tokenCount">0 tokens</span>
+        <span class="pause-badge">⏸ PAUSED</span>
+      </div>
     </div>
 
     <article class="article">
@@ -1018,6 +1039,11 @@ let thinkLength = 5;
 // -- custom content --
 let customContent = null;
 
+// -- token counter --
+let tokenCount = 0;
+let tokenCountVisible = true;
+const tokenCountEl = document.getElementById("tokenCount");
+
 const LOG_RANGE = Math.log(MAX_RATE / MIN_RATE);
 const rateToSlider = r => 100 * Math.log(r / MIN_RATE) / LOG_RANGE;
 const sliderToRate = v => MIN_RATE * Math.exp((v / 100) * LOG_RANGE);
@@ -1049,6 +1075,10 @@ function clearOutput() {
     output.removeChild(output.firstChild);
   }
   if (!output.contains(cursorEnd)) output.appendChild(cursorEnd);
+  tokenCount = 0;
+  if (tokenCountVisible) {
+    tokenCountEl.textContent = "0 tokens";
+  }
 }
 
 function setMode(m) {
@@ -1130,6 +1160,10 @@ function frame(now) {
       output.scrollTop = output.scrollHeight;
       trim();
     }
+    tokenCount += n;
+    if (tokenCountVisible) {
+      tokenCountEl.textContent = tokenCount.toLocaleString() + " tokens";
+    }
   }
   raf = requestAnimationFrame(frame);
 }
@@ -1196,6 +1230,12 @@ document.addEventListener("keydown", e => {
   } else if (k === "u" || k === "U") {
     const panel = document.getElementById("customPanel");
     panel.open = !panel.open;
+  } else if (k === "n" || k === "N") {
+    tokenCountVisible = !tokenCountVisible;
+    tokenCountEl.classList.toggle("hidden", !tokenCountVisible);
+    if (tokenCountVisible) {
+      tokenCountEl.textContent = tokenCount.toLocaleString() + " tokens";
+    }
   }
 });
 
