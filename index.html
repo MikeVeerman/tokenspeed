@@ -428,6 +428,27 @@
     font-style: italic;
   }
 
+  /* -- think length -- */
+  .think-controls {
+    gap: 12px;
+    transition: opacity 0.15s;
+  }
+  .think-controls[hidden] { display: none; }
+  .think-label {
+    color: var(--dim);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .think-num {
+    color: var(--dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 90px;
+  }
+
   @media (max-width: 640px) {
     body { padding: 16px 12px; }
     .rate-bar { grid-template-columns: 1fr auto; row-gap: 12px; }
@@ -483,6 +504,12 @@
       <button class="pill preset" data-rate="800"><kbd>9</kbd><span class="num">800</span></button>
     </div>
 
+    <div class="row think-controls" id="thinkControls" hidden>
+      <span class="think-label">Think length</span>
+      <input type="range" id="thinkSlider" min="1" max="20" step="1" value="5" aria-label="Thinking sentences">
+      <span class="think-num" id="thinkNum">5 sentences</span>
+    </div>
+
     <div class="output" id="output" tabindex="0" aria-live="polite"><span id="cursor-end">▍</span></div>
 
     <div class="footer">
@@ -490,7 +517,7 @@
         <kbd>space</kbd> pause &nbsp;·&nbsp;
         <kbd>+</kbd> / <kbd>−</kbd> adjust &nbsp;·&nbsp;
         <kbd>1</kbd>–<kbd>9</kbd> presets &nbsp;·&nbsp;
-        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> / <kbd>a</kbd> mode
+        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> / <kbd>a</kbd> mode &nbsp;·&nbsp; <kbd>&lt;</kbd> / <kbd>&gt;</kbd> think length
       </div>
       <span class="pause-badge">⏸ PAUSED</span>
     </div>
@@ -834,7 +861,7 @@ function* codeTokens() {
 }
 
 function* emitThought() {
-  const n = randInt(3, 7);
+  const n = thinkLength;
   for (let s = 0; s < n; s++) {
     const sentence = THOUGHTS[Math.floor(Math.random() * THOUGHTS.length)];
     for (const word of sentence.split(" ")) {
@@ -885,10 +912,13 @@ const GENERATORS = { code: codeTokens, text: proseTokens, think: thinkTokens, ag
 
 // ---- state + UI ----
 
-const output     = document.getElementById("output");
-const cursorEnd  = document.getElementById("cursor-end");
-const rateNum    = document.getElementById("rateNum");
-const rateSlider = document.getElementById("rateSlider");
+const output       = document.getElementById("output");
+const cursorEnd    = document.getElementById("cursor-end");
+const rateNum      = document.getElementById("rateNum");
+const rateSlider   = document.getElementById("rateSlider");
+const thinkCtrl    = document.getElementById("thinkControls");
+const thinkSlider  = document.getElementById("thinkSlider");
+const thinkNumEl   = document.getElementById("thinkNum");
 
 let rate = 30;
 let paused = false;
@@ -898,6 +928,9 @@ let raf = null;
 let lastTime = 0;
 let accumulator = 0;
 let pauseUntil = 0;
+
+// -- think length --
+let thinkLength = 5;
 
 const LOG_RANGE = Math.log(MAX_RATE / MIN_RATE);
 const rateToSlider = r => 100 * Math.log(r / MIN_RATE) / LOG_RANGE;
@@ -939,6 +972,7 @@ function setMode(m) {
   document.querySelectorAll("[data-mode]").forEach(b => {
     b.classList.toggle("active", b.dataset.mode === m);
   });
+  thinkCtrl.hidden = (m !== "think");
   clearOutput();
   lastTime = performance.now();
   accumulator = 0;
@@ -952,6 +986,7 @@ function syncURL() {
   const params = new URLSearchParams();
   params.set("rate", formatRate(rate));
   params.set("mode", mode);
+  if (thinkLength !== 5) params.set("think", thinkLength);
   history.replaceState(null, "", "?" + params.toString());
 }
 
@@ -1015,6 +1050,13 @@ function start() {
   raf = requestAnimationFrame(frame);
 }
 
+function setThinkLength(n) {
+  thinkLength = Math.max(1, Math.min(20, n));
+  thinkNumEl.textContent = thinkLength + (thinkLength === 1 ? " sentence" : " sentences");
+  thinkSlider.value = thinkLength;
+  syncURL();
+}
+
 // ---- wiring ----
 
 document.querySelectorAll("[data-mode]").forEach(b => {
@@ -1029,6 +1071,8 @@ document.getElementById("rateUp").addEventListener("click",   e => { setRate(rat
 document.getElementById("rateDown").addEventListener("click", e => { setRate(rate / RATE_STEP); e.currentTarget.blur(); });
 
 rateSlider.addEventListener("input", e => setRate(sliderToRate(parseFloat(e.target.value)), true));
+
+thinkSlider.addEventListener("input", e => setThinkLength(parseInt(e.target.value, 10)));
 
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1052,6 +1096,12 @@ document.addEventListener("keydown", e => {
     setMode("think");
   } else if (k === "a" || k === "A") {
     setMode("agent");
+  } else if (k === "<" || k === ",") {
+    e.preventDefault();
+    setThinkLength(thinkLength - 1);
+  } else if (k === ">" || k === ".") {
+    e.preventDefault();
+    setThinkLength(thinkLength + 1);
   }
 });
 
@@ -1087,11 +1137,14 @@ document.getElementById("shareBtn").addEventListener("click", async (e) => {
 const urlParams = new URLSearchParams(location.search);
 const urlMode  = urlParams.get("mode");
 const urlRate  = parseFloat(urlParams.get("rate"));
+const urlThink = parseInt(urlParams.get("think"), 10);
+if (!isNaN(urlThink) && urlThink >= 1 && urlThink <= 20) thinkLength = urlThink;
 const initialMode = (urlMode && GENERATORS[urlMode]) ? urlMode : "code";
 const initialRate = !isNaN(urlRate) ? urlRate : 30;
 
 setRate(initialRate);
 setMode(initialMode);
+if (thinkLength !== 5) setThinkLength(thinkLength);
 </script>
 </body>
 </html>
