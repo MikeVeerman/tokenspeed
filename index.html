@@ -688,16 +688,16 @@ const THOUGHTS = [
 ];
 
 const AGENT_STEPS = [
-  { tool: "read_file", desc: "Reading src/main.rs..." },
-  { tool: "search", desc: "Searching codebase for 'parse_config'..." },
-  { tool: "run_tests", desc: "Running test suite..." },
-  { tool: "read_file", desc: "Reading package.json..." },
-  { tool: "web_search", desc: "Searching docs for API reference..." },
-  { tool: "edit_file", desc: "Editing src/handler.rs..." },
-  { tool: "run_command", desc: "Running cargo build..." },
-  { tool: "read_file", desc: "Reading tests/integration_test.rs..." },
-  { tool: "list_files", desc: "Listing directory src/models/..." },
-  { tool: "run_tests", desc: "Running cargo test -- --filter handler..." },
+  { tool: "read_file", desc: "Reading src/main.rs...", inputTokens: 1200 },
+  { tool: "search", desc: "Searching codebase for 'parse_config'...", inputTokens: 800 },
+  { tool: "run_tests", desc: "Running test suite...", inputTokens: 2400 },
+  { tool: "read_file", desc: "Reading package.json...", inputTokens: 300 },
+  { tool: "web_search", desc: "Searching docs for API reference...", inputTokens: 1800 },
+  { tool: "edit_file", desc: "Editing src/handler.rs...", inputTokens: 600 },
+  { tool: "run_command", desc: "Running cargo build...", inputTokens: 3000 },
+  { tool: "read_file", desc: "Reading tests/integration_test.rs...", inputTokens: 1500 },
+  { tool: "list_files", desc: "Listing directory src/models/...", inputTokens: 200 },
+  { tool: "run_tests", desc: "Running cargo test -- --filter handler...", inputTokens: 2000 },
 ];
 
 // ---- helpers ----
@@ -868,8 +868,9 @@ function* agentTokens() {
     const step = AGENT_STEPS[Math.floor(Math.random() * AGENT_STEPS.length)];
     yield colorize("\n[tool_call: " + step.tool + "]\n", "agent-tool");
     yield `<span class="agent-phase"><span class="spinner">⟳</span> ${escapeHtml(step.desc)}</span>`;
-    // Pause object tells frame() to freeze emission (simulates prompt processing)
-    yield { pause: 1 + Math.random() * 2 };
+    // PP is typically ~5x faster than generation; clamp to 0.3–15s
+    const ppSeconds = Math.max(0.3, Math.min(15, step.inputTokens / (rate * 5)));
+    yield { pause: ppSeconds };
     yield "\n\n";
     yield* emitSnippet(snippets.next().value);
     yield "\n";
