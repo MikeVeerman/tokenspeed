@@ -409,6 +409,25 @@
     margin-top: 18px;
   }
 
+  /* -- agent mode -- */
+  .agent-phase {
+    color: var(--dim);
+    font-size: 12px;
+    font-style: italic;
+  }
+  .agent-phase .spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .agent-tool {
+    color: var(--comment);
+    font-style: italic;
+  }
+
   @media (max-width: 640px) {
     body { padding: 16px 12px; }
     .rate-bar { grid-template-columns: 1fr auto; row-gap: 12px; }
@@ -437,6 +456,7 @@
       <button class="pill" data-mode="code"><kbd>c</kbd>code</button>
       <button class="pill" data-mode="text"><kbd>t</kbd>text</button>
       <button class="pill" data-mode="think"><kbd>h</kbd>think</button>
+      <button class="pill" data-mode="agent"><kbd>a</kbd>agent</button>
     </div>
 
     <div class="rate-bar">
@@ -470,7 +490,7 @@
         <kbd>space</kbd> pause &nbsp;·&nbsp;
         <kbd>+</kbd> / <kbd>−</kbd> adjust &nbsp;·&nbsp;
         <kbd>1</kbd>–<kbd>9</kbd> presets &nbsp;·&nbsp;
-        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> mode
+        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> / <kbd>a</kbd> mode
       </div>
       <span class="pause-badge">⏸ PAUSED</span>
     </div>
@@ -483,11 +503,12 @@
         hard to internalize. This is the rendering.
       </p>
 
-      <h3>Three modes</h3>
+      <h3>Four modes</h3>
       <ul>
         <li><strong>code</strong> — syntax-highlighted pseudo-code, the most common thing you watch stream out of an LLM.</li>
         <li><strong>text</strong> — lorem ipsum prose, for the chat/answer case.</li>
         <li><strong>think</strong> — dim-italic reasoning sentences alternating with code, mimicking a reasoning model thinking out loud.</li>
+        <li><strong>agent</strong> — alternating tool calls and code generation with processing pauses, simulating an AI coding agent.</li>
       </ul>
 
       <h3>What to try</h3>
@@ -666,6 +687,19 @@ const THOUGHTS = [
   "Reading the tests, the contract seems to be that empty input returns an empty list, not None.",
 ];
 
+const AGENT_STEPS = [
+  { tool: "read_file", desc: "Reading src/main.rs..." },
+  { tool: "search", desc: "Searching codebase for 'parse_config'..." },
+  { tool: "run_tests", desc: "Running test suite..." },
+  { tool: "read_file", desc: "Reading package.json..." },
+  { tool: "web_search", desc: "Searching docs for API reference..." },
+  { tool: "edit_file", desc: "Editing src/handler.rs..." },
+  { tool: "run_command", desc: "Running cargo build..." },
+  { tool: "read_file", desc: "Reading tests/integration_test.rs..." },
+  { tool: "list_files", desc: "Listing directory src/models/..." },
+  { tool: "run_tests", desc: "Running cargo test -- --filter handler..." },
+];
+
 // ---- helpers ----
 
 function escapeHtml(s) {
@@ -828,7 +862,25 @@ function* thinkTokens() {
   }
 }
 
-const GENERATORS = { code: codeTokens, text: proseTokens, think: thinkTokens };
+function* agentTokens() {
+  const snippets = snippetCycle();
+  while (true) {
+    const step = AGENT_STEPS[Math.floor(Math.random() * AGENT_STEPS.length)];
+    yield colorize("\n[tool_call: " + step.tool + "]\n", "agent-tool");
+    yield `<span class="agent-phase"><span class="spinner">⟳</span> ${escapeHtml(step.desc)}</span>`;
+    // Pause object tells frame() to freeze emission (simulates prompt processing)
+    yield { pause: 1 + Math.random() * 2 };
+    yield "\n\n";
+    yield* emitSnippet(snippets.next().value);
+    yield "\n";
+    if (Math.random() < 0.5) {
+      yield* emitThought();
+      yield "\n\n";
+    }
+  }
+}
+
+const GENERATORS = { code: codeTokens, text: proseTokens, think: thinkTokens, agent: agentTokens };
 
 // ---- state + UI ----
 
@@ -844,6 +896,7 @@ let gen = null;
 let raf = null;
 let lastTime = 0;
 let accumulator = 0;
+let pauseUntil = 0;
 
 const LOG_RANGE = Math.log(MAX_RATE / MIN_RATE);
 const rateToSlider = r => 100 * Math.log(r / MIN_RATE) / LOG_RANGE;
@@ -888,6 +941,7 @@ function setMode(m) {
   clearOutput();
   lastTime = performance.now();
   accumulator = 0;
+  pauseUntil = 0;
   start();
   syncURL();
 }
@@ -926,6 +980,7 @@ function trim() {
 function frame(now) {
   raf = null;
   if (!gen || paused) return;
+  if (now < pauseUntil) { raf = requestAnimationFrame(frame); return; }
   const dt = (now - lastTime) / 1000;
   lastTime = now;
   // Cap dt to absorb tab-backgrounded gaps without bursting
@@ -935,7 +990,15 @@ function frame(now) {
     accumulator -= n;
     if (n > MAX_PER_FRAME) n = MAX_PER_FRAME;
     let html = "";
-    for (let i = 0; i < n; i++) html += gen.next().value;
+    for (let i = 0; i < n; i++) {
+      const token = gen.next().value;
+      if (typeof token === "object" && token !== null && token.pause) {
+        pauseUntil = performance.now() + token.pause * 1000;
+        accumulator = 0;
+        break;
+      }
+      html += token;
+    }
     if (html) {
       cursorEnd.insertAdjacentHTML("beforebegin", html);
       output.scrollTop = output.scrollHeight;
@@ -986,6 +1049,8 @@ document.addEventListener("keydown", e => {
     setMode("text");
   } else if (k === "h" || k === "H") {
     setMode("think");
+  } else if (k === "a" || k === "A") {
+    setMode("agent");
   }
 });
 
