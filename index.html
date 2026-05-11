@@ -409,6 +409,33 @@
     margin-top: 18px;
   }
 
+  /* -- ttft -- */
+  .ttft-row {
+    gap: 12px;
+  }
+  .ttft-label {
+    color: var(--dim);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    min-width: 40px;
+  }
+  .ttft-num {
+    color: var(--dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 56px;
+  }
+  .ttft-dots {
+    color: var(--dim);
+    animation: pulse 0.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
   @media (max-width: 640px) {
     body { padding: 16px 12px; }
     .rate-bar { grid-template-columns: 1fr auto; row-gap: 12px; }
@@ -463,6 +490,12 @@
       <button class="pill preset" data-rate="800"><kbd>9</kbd><span class="num">800</span></button>
     </div>
 
+    <div class="row ttft-row" id="ttftRow">
+      <span class="ttft-label">TTFT</span>
+      <input type="range" id="ttftSlider" min="0" max="5000" step="50" value="0" aria-label="Time to first token in milliseconds">
+      <span class="ttft-num" id="ttftNum">0 ms</span>
+    </div>
+
     <div class="output" id="output" tabindex="0" aria-live="polite"><span id="cursor-end">▍</span></div>
 
     <div class="footer">
@@ -470,7 +503,8 @@
         <kbd>space</kbd> pause &nbsp;·&nbsp;
         <kbd>+</kbd> / <kbd>−</kbd> adjust &nbsp;·&nbsp;
         <kbd>1</kbd>–<kbd>9</kbd> presets &nbsp;·&nbsp;
-        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> mode
+        <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> mode &nbsp;·&nbsp;
+        <kbd>[</kbd> / <kbd>]</kbd> TTFT
       </div>
       <span class="pause-badge">⏸ PAUSED</span>
     </div>
@@ -832,10 +866,12 @@ const GENERATORS = { code: codeTokens, text: proseTokens, think: thinkTokens };
 
 // ---- state + UI ----
 
-const output     = document.getElementById("output");
-const cursorEnd  = document.getElementById("cursor-end");
-const rateNum    = document.getElementById("rateNum");
-const rateSlider = document.getElementById("rateSlider");
+const output      = document.getElementById("output");
+const cursorEnd   = document.getElementById("cursor-end");
+const rateNum     = document.getElementById("rateNum");
+const rateSlider  = document.getElementById("rateSlider");
+const ttftNumEl   = document.getElementById("ttftNum");
+const ttftSliderEl = document.getElementById("ttftSlider");
 
 let rate = 30;
 let paused = false;
@@ -844,6 +880,11 @@ let gen = null;
 let raf = null;
 let lastTime = 0;
 let accumulator = 0;
+
+// -- ttft --
+let ttftDelay = 0;
+let ttftWaiting = false;
+let ttftTimeout = null;
 
 const LOG_RANGE = Math.log(MAX_RATE / MIN_RATE);
 const rateToSlider = r => 100 * Math.log(r / MIN_RATE) / LOG_RANGE;
@@ -888,7 +929,8 @@ function setMode(m) {
   clearOutput();
   lastTime = performance.now();
   accumulator = 0;
-  start();
+  cancelTTFTWait();
+  startTTFTWait(() => start());
   syncURL();
 }
 
@@ -897,16 +939,19 @@ function syncURL() {
   const params = new URLSearchParams();
   params.set("rate", formatRate(rate));
   params.set("mode", mode);
+  if (ttftDelay > 0) params.set("ttft", ttftDelay);
   history.replaceState(null, "", "?" + params.toString());
 }
 
 function setPaused(p) {
   paused = p;
   document.body.classList.toggle("paused", paused);
-  if (!paused) {
+  if (paused) {
+    cancelTTFTWait();
+  } else {
     lastTime = performance.now();
     accumulator = 0;
-    start();
+    startTTFTWait(() => start());
   }
 }
 
@@ -951,6 +996,31 @@ function start() {
   raf = requestAnimationFrame(frame);
 }
 
+function setTTFT(ms) {
+  ttftDelay = Math.max(0, Math.min(5000, ms));
+  ttftNumEl.textContent = ttftDelay + " ms";
+  ttftSliderEl.value = ttftDelay;
+  syncURL();
+}
+
+function cancelTTFTWait() {
+  if (ttftTimeout) { clearTimeout(ttftTimeout); ttftTimeout = null; }
+  ttftWaiting = false;
+  const indicator = document.getElementById("ttftIndicator");
+  if (indicator) indicator.remove();
+}
+
+function startTTFTWait(callback) {
+  if (ttftDelay <= 0) { callback(); return; }
+  ttftWaiting = true;
+  cursorEnd.insertAdjacentHTML("beforebegin", '<span class="ttft-dots" id="ttftIndicator">...</span>');
+  output.scrollTop = output.scrollHeight;
+  ttftTimeout = setTimeout(() => {
+    cancelTTFTWait();
+    callback();
+  }, ttftDelay);
+}
+
 // ---- wiring ----
 
 document.querySelectorAll("[data-mode]").forEach(b => {
@@ -965,6 +1035,8 @@ document.getElementById("rateUp").addEventListener("click",   e => { setRate(rat
 document.getElementById("rateDown").addEventListener("click", e => { setRate(rate / RATE_STEP); e.currentTarget.blur(); });
 
 rateSlider.addEventListener("input", e => setRate(sliderToRate(parseFloat(e.target.value)), true));
+
+ttftSliderEl.addEventListener("input", e => setTTFT(parseInt(e.target.value, 10)));
 
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -986,6 +1058,12 @@ document.addEventListener("keydown", e => {
     setMode("text");
   } else if (k === "h" || k === "H") {
     setMode("think");
+  } else if (k === "[") {
+    e.preventDefault();
+    setTTFT(Math.max(0, ttftDelay - 250));
+  } else if (k === "]") {
+    e.preventDefault();
+    setTTFT(Math.min(5000, ttftDelay + 250));
   }
 });
 
@@ -1025,6 +1103,8 @@ const initialMode = (urlMode && GENERATORS[urlMode]) ? urlMode : "code";
 const initialRate = !isNaN(urlRate) ? urlRate : 30;
 
 setRate(initialRate);
+const urlTTFT = parseInt(urlParams.get("ttft"), 10);
+if (!isNaN(urlTTFT)) setTTFT(urlTTFT);
 setMode(initialMode);
 </script>
 </body>
