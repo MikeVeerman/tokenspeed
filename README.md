@@ -49,3 +49,6 @@ Roughly: short words are often one token; longer identifiers frequently split in
 The point worth internalizing: code is more token-dense than prose, so the same tok/s can feel very different depending on what's streaming. 30 tok/s of code lands far less visible content per second than 30 tok/s of English. The benchmark number is honest; the perceptual effect just varies a lot by content type, which is exactly the gap this tool exists to expose.
 
 (English prose averages ~1.3 tokens per word, so 30 tok/s ≈ 23 words/s.)
+
+## Other Language
+- [中文页面](https://purestatic.chenfangxu.com/p/FkKbbfGDbKkMspyrTR-qm6RsqHRThCJc)
