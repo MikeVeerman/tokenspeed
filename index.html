@@ -499,6 +499,117 @@
     color: var(--accent);
   }
 
+  /* -- prompt processing (prefill) -- */
+  .ctx-panel {
+    width: 100%;
+  }
+  .ctx-panel > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .ctx-panel > summary::-webkit-details-marker { display: none; }
+  .ctx-panel[open] > summary {
+    margin-bottom: 12px;
+  }
+  .ctx-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .ctx-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ctx-label {
+    color: var(--dim);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    min-width: 58px;
+  }
+  .ctx-preset {
+    padding: 5px 11px;
+    font-size: 12px;
+    color: var(--dim);
+    min-width: 46px;
+    justify-content: center;
+  }
+  .ctx-preset.match {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+    box-shadow: 0 0 14px var(--accent-glow);
+  }
+  #prefillSlider { flex: 1; min-width: 120px; }
+  .ctx-num {
+    color: var(--dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 86px;
+    text-align: right;
+  }
+  .ctx-readout {
+    color: var(--dim);
+    font-size: 11.5px;
+    font-style: italic;
+  }
+  .ctx-readout strong { color: var(--accent); font-style: normal; }
+
+  .prefill-bar {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .prefill-bar[hidden] { display: none; }
+  .prefill-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--dim);
+    font-style: italic;
+  }
+  .prefill-head .spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+    color: var(--accent);
+    font-style: normal;
+  }
+  .prefill-stats {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    font-style: normal;
+  }
+  .prefill-skip {
+    color: var(--dim);
+    opacity: 0.7;
+    font-style: normal;
+  }
+  .prefill-track {
+    height: 5px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .prefill-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent-glow);
+    border-radius: 3px;
+    transition: width 0.08s linear;
+  }
+  body.paused .prefill-fill { box-shadow: none; }
+
   /* -- token counter -- */
   .footer-right {
     display: flex;
@@ -593,6 +704,37 @@
       </div>
     </details>
 
+    <details class="ctx-panel" id="ctxPanel">
+      <summary class="pill"><kbd>p</kbd>prompt processing…</summary>
+      <div class="ctx-body">
+        <div class="ctx-line">
+          <span class="ctx-label">Context</span>
+          <button class="pill ctx-preset" data-ctx="0">off</button>
+          <button class="pill ctx-preset" data-ctx="1000">1k</button>
+          <button class="pill ctx-preset" data-ctx="4000">4k</button>
+          <button class="pill ctx-preset" data-ctx="16000">16k</button>
+          <button class="pill ctx-preset" data-ctx="64000">64k</button>
+          <button class="pill ctx-preset" data-ctx="256000">256k</button>
+          <button class="pill ctx-preset" data-ctx="1000000">1M</button>
+        </div>
+        <div class="ctx-line">
+          <span class="ctx-label">Prefill</span>
+          <input type="range" id="prefillSlider" min="0" max="100" step="0.1" value="50" aria-label="Prefill speed">
+          <span class="ctx-num" id="prefillNum">1,000 tok/s</span>
+        </div>
+        <span class="ctx-readout" id="ctxReadout">Pick a context size to feel the wait before the first token.</span>
+      </div>
+    </details>
+
+    <div class="prefill-bar" id="prefillBar" hidden title="click to skip">
+      <div class="prefill-head">
+        <span class="spinner">⟳</span>
+        <span>processing prompt… <span class="prefill-skip">(click to skip)</span></span>
+        <span class="prefill-stats" id="prefillStats"></span>
+      </div>
+      <div class="prefill-track"><div class="prefill-fill" id="prefillFill"></div></div>
+    </div>
+
     <div class="output" id="output" tabindex="0" aria-live="polite"><span id="cursor-end">▍</span></div>
 
     <div class="footer">
@@ -601,7 +743,7 @@
         <kbd>+</kbd> / <kbd>−</kbd> adjust &nbsp;·&nbsp;
         <kbd>1</kbd>–<kbd>9</kbd> presets &nbsp;·&nbsp;
         <kbd>c</kbd> / <kbd>t</kbd> / <kbd>h</kbd> / <kbd>a</kbd> mode &nbsp;·&nbsp; <kbd>&lt;</kbd> / <kbd>&gt;</kbd> think length &nbsp;·&nbsp; <kbd>u</kbd> custom &nbsp;·&nbsp;
-        <kbd>n</kbd> counter
+        <kbd>p</kbd> prompt &nbsp;·&nbsp; <kbd>n</kbd> counter
       </div>
       <div class="footer-right">
         <span class="token-count" id="tokenCount">0 tokens</span>
@@ -636,6 +778,17 @@
       <p>
         Now switch between <kbd>c</kbd> and <kbd>t</kbd> at the same rate.
         The difference is striking — and intentional.
+      </p>
+
+      <h3>Prompt processing</h3>
+      <p>
+        Before a model emits a single output token, it has to read your whole
+        prompt — the <em>prefill</em> pass. Open <kbd>p</kbd>, pick a context size,
+        and the tool makes you sit through that wait before streaming starts, the
+        same way it makes you feel tok/s. Prefill is much faster per token than
+        generation, but a long context still stalls you: 64k tokens at 1,000 tok/s
+        of prefill is over a minute of nothing. That delay is time-to-first-token,
+        and it's the half of the latency story a throughput number never shows.
       </p>
 
       <h3>What counts as a token</h3>
@@ -1042,9 +1195,27 @@ let tokenCount = 0;
 let tokenCountVisible = true;
 const tokenCountEl = document.getElementById("tokenCount");
 
+// -- prompt processing (prefill) --
+const MIN_PREFILL = 20;
+const MAX_PREFILL = 50000;
+let contextSize = 0;       // tokens to "read" before streaming; 0 = off
+let prefillSpeed = 1000;   // prefill tokens/sec
+let prefillActive = false; // currently sitting through the prefill wait
+let prefillDone = 0;       // tokens processed so far this prefill
+const prefillBar    = document.getElementById("prefillBar");
+const prefillFill   = document.getElementById("prefillFill");
+const prefillStats  = document.getElementById("prefillStats");
+const prefillSlider = document.getElementById("prefillSlider");
+const prefillNumEl  = document.getElementById("prefillNum");
+const ctxReadoutEl  = document.getElementById("ctxReadout");
+
 const LOG_RANGE = Math.log(MAX_RATE / MIN_RATE);
 const rateToSlider = r => 100 * Math.log(r / MIN_RATE) / LOG_RANGE;
 const sliderToRate = v => MIN_RATE * Math.exp((v / 100) * LOG_RANGE);
+
+const PRE_RANGE = Math.log(MAX_PREFILL / MIN_PREFILL);
+const prefillToSlider = r => 100 * Math.log(r / MIN_PREFILL) / PRE_RANGE;
+const sliderToPrefill = v => MIN_PREFILL * Math.exp((v / 100) * PRE_RANGE);
 
 function formatRate(r) {
   if (r >= 100) return Math.round(r).toString();
@@ -1095,7 +1266,91 @@ function setMode(m) {
   lastTime = performance.now();
   accumulator = 0;
   pauseUntil = 0;
+  beginStream();
+  syncURL();
+}
+
+// Start (or restart) a generation. If a context size is set, sit through the
+// prefill wait first, then stream output.
+function beginStream() {
+  if (contextSize > 0) {
+    prefillActive = true;
+    prefillDone = 0;
+    prefillBar.hidden = false;
+    updatePrefillUI();
+  } else {
+    prefillActive = false;
+    prefillBar.hidden = true;
+  }
+  lastTime = performance.now();
+  accumulator = 0;
   start();
+}
+
+function updatePrefillUI() {
+  const frac = contextSize > 0 ? Math.min(1, prefillDone / contextSize) : 1;
+  prefillFill.style.width = (frac * 100).toFixed(1) + "%";
+  const total = contextSize / prefillSpeed;
+  const elapsed = Math.min(total, prefillDone / prefillSpeed);
+  prefillStats.textContent =
+    Math.round(prefillDone).toLocaleString() + " / " +
+    contextSize.toLocaleString() + " tok · " +
+    elapsed.toFixed(1) + "s / " + total.toFixed(1) + "s";
+}
+
+function finishPrefill() {
+  prefillActive = false;
+  prefillBar.hidden = true;
+  lastTime = performance.now();
+  accumulator = 0;
+}
+
+function skipPrefill() {
+  if (!prefillActive) return;
+  finishPrefill();
+  start();
+}
+
+function formatTTFT(s) {
+  if (s < 1)  return s.toFixed(2) + " s";
+  if (s < 60) return s.toFixed(1) + " s";
+  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  return r ? m + " min " + r + " s" : m + " min";
+}
+
+function updateCtxReadout() {
+  if (contextSize <= 0) {
+    ctxReadoutEl.innerHTML = "Pick a context size to feel the wait before the first token.";
+    return;
+  }
+  const ttft = formatTTFT(contextSize / prefillSpeed);
+  ctxReadoutEl.innerHTML =
+    "Time to first token: <strong>" + ttft + "</strong> — " +
+    contextSize.toLocaleString() + " tokens at " +
+    Math.round(prefillSpeed).toLocaleString() + " tok/s prefill.";
+}
+
+function setContext(tokens) {
+  contextSize = Math.max(0, tokens);
+  document.querySelectorAll(".ctx-preset").forEach(p => {
+    p.classList.toggle("match", parseFloat(p.dataset.ctx) === contextSize);
+  });
+  updateCtxReadout();
+  syncURL();
+  // Replay so the new prefill wait is felt immediately.
+  if (mode) {
+    clearOutput();
+    pauseUntil = 0;
+    beginStream();
+  }
+}
+
+function setPrefillSpeed(tps, fromSlider = false) {
+  prefillSpeed = Math.max(MIN_PREFILL, Math.min(MAX_PREFILL, tps));
+  prefillNumEl.textContent = Math.round(prefillSpeed).toLocaleString() + " tok/s";
+  if (!fromSlider) prefillSlider.value = prefillToSlider(prefillSpeed);
+  updateCtxReadout();
+  if (prefillActive) updatePrefillUI();
   syncURL();
 }
 
@@ -1105,6 +1360,10 @@ function syncURL() {
   params.set("rate", formatRate(rate));
   params.set("mode", mode);
   if (thinkLength !== 5) params.set("think", thinkLength);
+  if (contextSize > 0) {
+    params.set("ctx", contextSize);
+    params.set("prefill", Math.round(prefillSpeed));
+  }
   history.replaceState(null, "", "?" + params.toString());
 }
 
@@ -1134,6 +1393,20 @@ function trim() {
 function frame(now) {
   raf = null;
   if (!gen || paused) return;
+  if (prefillActive) {
+    const pdt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+    prefillDone += pdt * prefillSpeed;
+    if (prefillDone >= contextSize) {
+      prefillDone = contextSize;
+      updatePrefillUI();
+      finishPrefill();
+    } else {
+      updatePrefillUI();
+    }
+    raf = requestAnimationFrame(frame);
+    return;
+  }
   if (now < pauseUntil) { raf = requestAnimationFrame(frame); return; }
   const dt = (now - lastTime) / 1000;
   lastTime = now;
@@ -1196,6 +1469,14 @@ rateSlider.addEventListener("input", e => setRate(sliderToRate(parseFloat(e.targ
 
 thinkSlider.addEventListener("input", e => setThinkLength(parseInt(e.target.value, 10)));
 
+document.querySelectorAll(".ctx-preset").forEach(b => {
+  b.addEventListener("click", () => { setContext(parseFloat(b.dataset.ctx)); b.blur(); });
+});
+
+prefillSlider.addEventListener("input", e => setPrefillSpeed(sliderToPrefill(parseFloat(e.target.value)), true));
+
+prefillBar.addEventListener("click", skipPrefill);
+
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.target.matches("textarea, input:not([type='range'])")) return;
@@ -1227,6 +1508,9 @@ document.addEventListener("keydown", e => {
     setThinkLength(thinkLength + 1);
   } else if (k === "u" || k === "U") {
     const panel = document.getElementById("customPanel");
+    panel.open = !panel.open;
+  } else if (k === "p" || k === "P") {
+    const panel = document.getElementById("ctxPanel");
     panel.open = !panel.open;
   } else if (k === "n" || k === "N") {
     tokenCountVisible = !tokenCountVisible;
@@ -1305,11 +1589,24 @@ const urlParams = new URLSearchParams(location.search);
 const urlMode  = urlParams.get("mode");
 const urlRate  = parseFloat(urlParams.get("rate"));
 const urlThink = parseInt(urlParams.get("think"), 10);
+const urlCtx   = parseFloat(urlParams.get("ctx"));
+const urlPre   = parseFloat(urlParams.get("prefill"));
 if (!isNaN(urlThink) && urlThink >= 1 && urlThink <= 20) thinkLength = urlThink;
 const initialMode = (urlMode && GENERATORS[urlMode]) ? urlMode : "code";
 const initialRate = !isNaN(urlRate) ? urlRate : 30;
 
 setRate(initialRate);
+setPrefillSpeed(!isNaN(urlPre) ? urlPre : 1000);
+if (!isNaN(urlCtx) && urlCtx > 0) {
+  contextSize = Math.max(0, urlCtx);
+  document.querySelectorAll(".ctx-preset").forEach(p => {
+    p.classList.toggle("match", parseFloat(p.dataset.ctx) === contextSize);
+  });
+  document.getElementById("ctxPanel").open = true;
+} else {
+  document.querySelector('.ctx-preset[data-ctx="0"]').classList.add("match");
+}
+updateCtxReadout();
 setMode(initialMode);
 if (thinkLength !== 5) setThinkLength(thinkLength);
 </script>
