@@ -135,6 +135,24 @@
     flex-wrap: wrap;
   }
 
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .hint {
+    color: var(--dim);
+    font-size: 11.5px;
+    line-height: 1.5;
+    margin: 0 2px;
+    max-width: 62ch;
+  }
+  .hint b {
+    color: var(--fg);
+    font-weight: 600;
+  }
+  .hint.panel-hint { margin: 0 0 4px; }
+
   .pill {
     background: var(--bg2);
     border: 1px solid var(--border);
@@ -650,35 +668,41 @@
 
     <p class="subtitle">How fast is <span class="hl">10 tokens per second</span> <em>really</em>?</p>
 
-    <div class="row" id="modes" role="tablist" aria-label="Mode">
-      <button class="pill" data-mode="code"><kbd>c</kbd>code</button>
-      <button class="pill" data-mode="text"><kbd>t</kbd>text</button>
-      <button class="pill" data-mode="think"><kbd>h</kbd>think</button>
-      <button class="pill" data-mode="agent"><kbd>a</kbd>agent</button>
+    <div class="group">
+      <div class="row" id="modes" role="tablist" aria-label="Mode">
+        <button class="pill" data-mode="code"><kbd>c</kbd>code</button>
+        <button class="pill" data-mode="text"><kbd>t</kbd>text</button>
+        <button class="pill" data-mode="think"><kbd>h</kbd>think</button>
+        <button class="pill" data-mode="agent"><kbd>a</kbd>agent</button>
+      </div>
+      <p class="hint"><b>1. What's streaming.</b> Code is denser than prose, so the same speed feels slower — <b>think</b> shows a reasoning model, <b>agent</b> adds tool calls and pauses.</p>
     </div>
 
-    <div class="rate-bar">
-      <div class="rate-display">
-        <span class="rate-num" id="rateNum">30</span>
-        <span class="rate-unit">tok/s</span>
+    <div class="group">
+      <div class="rate-bar">
+        <div class="rate-display">
+          <span class="rate-num" id="rateNum">30</span>
+          <span class="rate-unit">tok/s</span>
+        </div>
+        <input type="range" id="rateSlider" min="0" max="100" step="0.1" value="60" aria-label="Rate">
+        <div class="step-btns">
+          <button class="icon-btn" id="rateDown" title="slower (−)" aria-label="slower">−</button>
+          <button class="icon-btn" id="rateUp" title="faster (+)" aria-label="faster">+</button>
+        </div>
       </div>
-      <input type="range" id="rateSlider" min="0" max="100" step="0.1" value="60" aria-label="Rate">
-      <div class="step-btns">
-        <button class="icon-btn" id="rateDown" title="slower (−)" aria-label="slower">−</button>
-        <button class="icon-btn" id="rateUp" title="faster (+)" aria-label="faster">+</button>
-      </div>
-    </div>
 
-    <div class="row" id="presets">
-      <button class="pill preset" data-rate="5"><kbd>1</kbd><span class="num">5</span></button>
-      <button class="pill preset" data-rate="10"><kbd>2</kbd><span class="num">10</span></button>
-      <button class="pill preset" data-rate="20"><kbd>3</kbd><span class="num">20</span></button>
-      <button class="pill preset" data-rate="30"><kbd>4</kbd><span class="num">30</span></button>
-      <button class="pill preset" data-rate="60"><kbd>5</kbd><span class="num">60</span></button>
-      <button class="pill preset" data-rate="100"><kbd>6</kbd><span class="num">100</span></button>
-      <button class="pill preset" data-rate="200"><kbd>7</kbd><span class="num">200</span></button>
-      <button class="pill preset" data-rate="400"><kbd>8</kbd><span class="num">400</span></button>
-      <button class="pill preset" data-rate="800"><kbd>9</kbd><span class="num">800</span></button>
+      <div class="row" id="presets">
+        <button class="pill preset" data-rate="5"><kbd>1</kbd><span class="num">5</span></button>
+        <button class="pill preset" data-rate="10"><kbd>2</kbd><span class="num">10</span></button>
+        <button class="pill preset" data-rate="20"><kbd>3</kbd><span class="num">20</span></button>
+        <button class="pill preset" data-rate="30"><kbd>4</kbd><span class="num">30</span></button>
+        <button class="pill preset" data-rate="60"><kbd>5</kbd><span class="num">60</span></button>
+        <button class="pill preset" data-rate="100"><kbd>6</kbd><span class="num">100</span></button>
+        <button class="pill preset" data-rate="200"><kbd>7</kbd><span class="num">200</span></button>
+        <button class="pill preset" data-rate="400"><kbd>8</kbd><span class="num">400</span></button>
+        <button class="pill preset" data-rate="800"><kbd>9</kbd><span class="num">800</span></button>
+      </div>
+      <p class="hint"><b>2. How fast it streams.</b> Tokens per second — drag, nudge with <b>±</b>, or jump to a preset (<b>5</b> a slow local model → <b>800</b> Cerebras-class).</p>
     </div>
 
     <div class="row think-controls" id="thinkControls" hidden>
@@ -690,6 +714,7 @@
     <details class="custom-panel" id="customPanel">
       <summary class="pill"><kbd>u</kbd>custom text…</summary>
       <div class="custom-body">
+        <p class="hint panel-hint"><b>Optional.</b> Stream your own text or code instead of the built-in samples — paste it or upload a file.</p>
         <textarea id="customText" rows="5" placeholder="Paste your text or code here…"></textarea>
         <div class="row">
           <button class="pill custom-btn" id="customApplyText">Use as text</button>
@@ -707,6 +732,7 @@
     <details class="ctx-panel" id="ctxPanel">
       <summary class="pill"><kbd>p</kbd>prompt processing…</summary>
       <div class="ctx-body">
+        <p class="hint panel-hint"><b>Optional.</b> Before the first token, the model reads your whole prompt. Set a context size and prefill speed to sit through that wait — that's time-to-first-token.</p>
         <div class="ctx-line">
           <span class="ctx-label">Context</span>
           <button class="pill ctx-preset" data-ctx="0">off</button>
