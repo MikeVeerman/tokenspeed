@@ -980,18 +980,23 @@ const THOUGHTS = [
   "Reading the tests, the contract seems to be that empty input returns an empty list, not None.",
 ];
 
+// `result` = approx tokens each tool dumps back into the context. Together with
+// the model's own generated turn, this grows the context that must be re-read
+// (prefilled) before the next turn — so agent runs slow down as they go.
 const AGENT_STEPS = [
-  { tool: "read_file", desc: "Reading src/main.rs...", pause: 1.2 },
-  { tool: "search", desc: "Searching codebase for 'parse_config'...", pause: 2.0 },
-  { tool: "run_tests", desc: "Running test suite...", pause: 5.0 },
-  { tool: "read_file", desc: "Reading package.json...", pause: 0.5 },
-  { tool: "web_search", desc: "Searching docs for API reference...", pause: 3.5 },
-  { tool: "edit_file", desc: "Editing src/handler.rs...", pause: 0.8 },
-  { tool: "run_command", desc: "Running cargo build...", pause: 6.0 },
-  { tool: "read_file", desc: "Reading tests/integration_test.rs...", pause: 1.0 },
-  { tool: "list_files", desc: "Listing directory src/models/...", pause: 0.4 },
-  { tool: "run_tests", desc: "Running cargo test -- --filter handler...", pause: 4.0 },
+  { tool: "read_file", desc: "Reading src/main.rs...", pause: 1.2, result: 800 },
+  { tool: "search", desc: "Searching codebase for 'parse_config'...", pause: 2.0, result: 400 },
+  { tool: "run_tests", desc: "Running test suite...", pause: 5.0, result: 1500 },
+  { tool: "read_file", desc: "Reading package.json...", pause: 0.5, result: 200 },
+  { tool: "web_search", desc: "Searching docs for API reference...", pause: 3.5, result: 1000 },
+  { tool: "edit_file", desc: "Editing src/handler.rs...", pause: 0.8, result: 150 },
+  { tool: "run_command", desc: "Running cargo build...", pause: 6.0, result: 600 },
+  { tool: "read_file", desc: "Reading tests/integration_test.rs...", pause: 1.0, result: 700 },
+  { tool: "list_files", desc: "Listing directory src/models/...", pause: 0.4, result: 120 },
+  { tool: "run_tests", desc: "Running cargo test -- --filter handler...", pause: 4.0, result: 900 },
 ];
+// Rough tokens the model itself emits per turn (added to the context too).
+const AGENT_GEN_EST = 400;
 
 // ---- helpers ----
 
@@ -1163,6 +1168,9 @@ function* agentTokens() {
     yield `<span class="agent-phase"><span class="spinner">⟳</span> ${escapeHtml(step.desc)}</span>`;
     yield { pause: step.pause };
     yield "\n\n";
+    // Tool result is appended to the context, so the model must re-read the
+    // whole (now larger) context before its next turn — another prefill.
+    yield { agentPrefill: step.result + AGENT_GEN_EST };
     yield* emitSnippet(snippets.next().value);
     yield "\n";
     if (Math.random() < 0.5) {
@@ -1228,6 +1236,8 @@ let contextSize = 0;       // tokens to "read" before streaming; 0 = off
 let prefillSpeed = 1000;   // prefill tokens/sec
 let prefillActive = false; // currently sitting through the prefill wait
 let prefillDone = 0;       // tokens processed so far this prefill
+let prefillTarget = 0;     // tokens to process this prefill (grows in agent mode)
+let agentCtx = 0;          // running agent context; grows each tool-call turn
 const prefillBar    = document.getElementById("prefillBar");
 const prefillFill   = document.getElementById("prefillFill");
 const prefillStats  = document.getElementById("prefillStats");
@@ -1299,6 +1309,9 @@ function setMode(m) {
 // Start (or restart) a generation. If a context size is set, sit through the
 // prefill wait first, then stream output.
 function beginStream() {
+  // Each fresh start reseeds the growing agent context to the prompt size.
+  agentCtx = contextSize;
+  prefillTarget = contextSize;
   if (contextSize > 0) {
     prefillActive = true;
     prefillDone = 0;
@@ -1314,13 +1327,13 @@ function beginStream() {
 }
 
 function updatePrefillUI() {
-  const frac = contextSize > 0 ? Math.min(1, prefillDone / contextSize) : 1;
+  const frac = prefillTarget > 0 ? Math.min(1, prefillDone / prefillTarget) : 1;
   prefillFill.style.width = (frac * 100).toFixed(1) + "%";
-  const total = contextSize / prefillSpeed;
+  const total = prefillTarget / prefillSpeed;
   const elapsed = Math.min(total, prefillDone / prefillSpeed);
   prefillStats.textContent =
     Math.round(prefillDone).toLocaleString() + " / " +
-    contextSize.toLocaleString() + " tok · " +
+    prefillTarget.toLocaleString() + " tok · " +
     elapsed.toFixed(1) + "s / " + total.toFixed(1) + "s";
 }
 
@@ -1423,8 +1436,8 @@ function frame(now) {
     const pdt = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
     prefillDone += pdt * prefillSpeed;
-    if (prefillDone >= contextSize) {
-      prefillDone = contextSize;
+    if (prefillDone >= prefillTarget) {
+      prefillDone = prefillTarget;
       updatePrefillUI();
       finishPrefill();
     } else {
@@ -1449,6 +1462,21 @@ function frame(now) {
         pauseUntil = performance.now() + token.pause * 1000;
         accumulator = 0;
         break;
+      }
+      if (typeof token === "object" && token !== null && token.agentPrefill !== undefined) {
+        // Only prefill when the user has a context size set; otherwise the
+        // agent just streams between tool pauses as before.
+        if (contextSize > 0) {
+          agentCtx += token.agentPrefill;
+          prefillTarget = agentCtx;
+          prefillDone = 0;
+          prefillActive = true;
+          prefillBar.hidden = false;
+          updatePrefillUI();
+          accumulator = 0;
+          break;
+        }
+        continue;
       }
       html += token;
     }
